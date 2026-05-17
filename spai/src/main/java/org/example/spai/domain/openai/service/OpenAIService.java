@@ -6,6 +6,9 @@ import org.springframework.ai.audio.transcription.AudioTranscriptionPrompt;
 import org.springframework.ai.audio.transcription.AudioTranscriptionResponse;
 import org.springframework.ai.audio.tts.TextToSpeechPrompt;
 import org.springframework.ai.audio.tts.TextToSpeechResponse;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -41,16 +44,19 @@ public class OpenAIService {
     private final OpenAiImageModel openAiImageModel;
     private final OpenAiAudioSpeechModel openAiAudioSpeechModel;
     private final OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel;
+    private final ChatMemoryRepository chatMemoryRepository;
     
     // 의존성 주입(생성자 방식)
 	public OpenAIService(OpenAiChatModel openAiChatModel, OpenAiEmbeddingModel openAiEmbeddingModel,
 			OpenAiImageModel openAiImageModel, OpenAiAudioSpeechModel openAiAudioSpeechModel,
-			OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel) {
+			OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel, ChatMemoryRepository chatMemoryRepository) {
 		this.openAiChatModel = openAiChatModel;
 		this.openAiEmbeddingModel = openAiEmbeddingModel;
 		this.openAiImageModel = openAiImageModel;
 		this.openAiAudioSpeechModel = openAiAudioSpeechModel;
 		this.openAiAudioTranscriptionModel = openAiAudioTranscriptionModel;
+		this.chatMemoryRepository = chatMemoryRepository;
+		
 	}
 	
     
@@ -79,15 +85,26 @@ public class OpenAIService {
 	}
     
 	
+	
+	
 	// 1. chatmodel : response를 stream 하게 받는 방법
 	// 데이터를 호출하고 응답 받을 때 Flux로 받음 + openai chat 모델을 호출할 때도 stream메서드로 바뀜
 	public Flux<String> generateStream(String text) {
 
+	    // 유저&페이지별 ChatMemory를 관리하기 위한 key (우선은 명시적으로)
+	    String userId = "xxxjjhhh" + "_" + "3";
+		
 	    // 메시지
-	    SystemMessage systemMessage = new SystemMessage("");
-	    UserMessage userMessage = new UserMessage(text);
-	    AssistantMessage assistantMessage = new AssistantMessage("");
-
+//	    SystemMessage systemMessage = new SystemMessage("");
+//	    UserMessage userMessage = new UserMessage(text);
+//	    AssistantMessage assistantMessage = new AssistantMessage("");
+	    ChatMemory chatMemory = MessageWindowChatMemory.builder()
+	            .maxMessages(10)	// 몇개를 들고 있을건지
+	            .chatMemoryRepository(chatMemoryRepository)
+	            .build();
+	    chatMemory.add(userId, new UserMessage(text)); // 신규 메시지도 추가
+	    
+	    
 	    // 옵션
 	    OpenAiChatOptions options = OpenAiChatOptions.builder()
 	            .model("gpt-4.1-mini")
@@ -95,12 +112,31 @@ public class OpenAIService {
 	            .build();
 
 	    // 프롬프트
-	    Prompt prompt = new Prompt(List.of(systemMessage, userMessage, assistantMessage), options);
+//	    Prompt prompt = new Prompt(List.of(systemMessage, userMessage, assistantMessage), options);
+	    Prompt prompt = new Prompt(chatMemory.get(userId), options);
 
+	    
+	    // 응답 메시지를 저장할 임시 버퍼
+	    StringBuilder responseBuffer = new StringBuilder();
+	    
+	    
 	    // 요청 및 응답
 	    // 위의 메서드에서는 call로 호출했지만, 여기서는 stream호출함(요청한 이후에 토큰 단위로 응답받을 수 있음)
+//	    return openAiChatModel.stream(prompt)
+//	            .mapNotNull(response -> response.getResult().getOutput().getText());
+	    // 요청 및 응답
 	    return openAiChatModel.stream(prompt)
-	            .mapNotNull(response -> response.getResult().getOutput().getText());
+	            .mapNotNull(response -> {
+	                String token = response.getResult().getOutput().getText();
+	                responseBuffer.append(token);	// 각각의 토큰을 추가해줌
+	                return token;
+	            })
+	            .doOnComplete(() -> {
+
+	                chatMemory.add(userId, new AssistantMessage(responseBuffer.toString()));
+	                chatMemoryRepository.saveAll(userId, chatMemory.get(userId));	// DB에 저장
+	            });
+	    
 	}	
 	
 	
