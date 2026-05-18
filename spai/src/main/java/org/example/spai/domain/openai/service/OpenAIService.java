@@ -2,6 +2,8 @@ package org.example.spai.domain.openai.service;
 
 import java.util.List;
 
+import org.example.spai.domain.openai.entity.ChatEntity;
+import org.example.spai.domain.openai.repository.ChatRepository;
 import org.springframework.ai.audio.transcription.AudioTranscriptionPrompt;
 import org.springframework.ai.audio.transcription.AudioTranscriptionResponse;
 import org.springframework.ai.audio.tts.TextToSpeechPrompt;
@@ -10,6 +12,7 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -31,6 +34,7 @@ import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.ai.openai.OpenAiImageModel;
 import org.springframework.ai.openai.OpenAiImageOptions;
 import org.springframework.ai.openai.api.OpenAiAudioApi;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 
@@ -45,17 +49,21 @@ public class OpenAIService {
     private final OpenAiAudioSpeechModel openAiAudioSpeechModel;
     private final OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel;
     private final ChatMemoryRepository chatMemoryRepository;
+    private final ChatRepository chatRepository;
+    
     
     // 의존성 주입(생성자 방식)
 	public OpenAIService(OpenAiChatModel openAiChatModel, OpenAiEmbeddingModel openAiEmbeddingModel,
 			OpenAiImageModel openAiImageModel, OpenAiAudioSpeechModel openAiAudioSpeechModel,
-			OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel, ChatMemoryRepository chatMemoryRepository) {
+			OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel, 
+			@Qualifier("chatMemoryRepository") ChatMemoryRepository chatMemoryRepository, ChatRepository chatRepository) {
 		this.openAiChatModel = openAiChatModel;
 		this.openAiEmbeddingModel = openAiEmbeddingModel;
 		this.openAiImageModel = openAiImageModel;
 		this.openAiAudioSpeechModel = openAiAudioSpeechModel;
 		this.openAiAudioTranscriptionModel = openAiAudioTranscriptionModel;
 		this.chatMemoryRepository = chatMemoryRepository;
+		this.chatRepository = chatRepository;
 		
 	}
 	
@@ -94,6 +102,13 @@ public class OpenAIService {
 	    // 유저&페이지별 ChatMemory를 관리하기 위한 key (우선은 명시적으로)
 	    String userId = "xxxjjhhh" + "_" + "3";
 		
+	    // 전체 대화 저장용
+	    ChatEntity chatUserEntity = new ChatEntity();
+	    chatUserEntity.setUserId(userId);
+	    chatUserEntity.setType(MessageType.USER);
+	    chatUserEntity.setContent(text);
+	    
+	    
 	    // 메시지
 //	    SystemMessage systemMessage = new SystemMessage("");
 //	    UserMessage userMessage = new UserMessage(text);
@@ -135,6 +150,15 @@ public class OpenAIService {
 
 	                chatMemory.add(userId, new AssistantMessage(responseBuffer.toString()));
 	                chatMemoryRepository.saveAll(userId, chatMemory.get(userId));	// DB에 저장
+	                
+	                // 전체 대화 저장용
+	                // 응답받은 메시지
+	                ChatEntity chatAssistantEntity = new ChatEntity();
+	                chatAssistantEntity.setUserId(userId);
+	                chatAssistantEntity.setType(MessageType.ASSISTANT);
+	                chatAssistantEntity.setContent(responseBuffer.toString());
+	                
+	                chatRepository.saveAll(List.of(chatUserEntity, chatAssistantEntity));
 	            });
 	    
 	}	
