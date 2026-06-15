@@ -10,6 +10,8 @@ import org.springframework.ai.audio.transcription.AudioTranscriptionResponse;
 import org.springframework.ai.audio.tts.TextToSpeechPrompt;
 import org.springframework.ai.audio.tts.TextToSpeechResponse;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.api.Advisor;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
@@ -36,6 +38,8 @@ import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.ai.openai.OpenAiImageModel;
 import org.springframework.ai.openai.OpenAiImageOptions;
 import org.springframework.ai.openai.api.OpenAiAudioApi;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -52,13 +56,14 @@ public class OpenAIService {
     private final OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel;
     private final ChatMemoryRepository chatMemoryRepository;
     private final ChatRepository chatRepository;
+    private final VectorStore elasticsearchVectorStore;
     
     
     // 의존성 주입(생성자 방식)
 	public OpenAIService(OpenAiChatModel openAiChatModel, OpenAiEmbeddingModel openAiEmbeddingModel,
 			OpenAiImageModel openAiImageModel, OpenAiAudioSpeechModel openAiAudioSpeechModel,
 			OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel, 
-			@Qualifier("chatMemoryRepository") ChatMemoryRepository chatMemoryRepository, ChatRepository chatRepository) {
+			@Qualifier("chatMemoryRepository") ChatMemoryRepository chatMemoryRepository, ChatRepository chatRepository, VectorStore elasticsearchVectorStore) {
 		this.openAiChatModel = openAiChatModel;
 		this.openAiEmbeddingModel = openAiEmbeddingModel;
 		this.openAiImageModel = openAiImageModel;
@@ -66,6 +71,7 @@ public class OpenAIService {
 		this.openAiAudioTranscriptionModel = openAiAudioTranscriptionModel;
 		this.chatMemoryRepository = chatMemoryRepository;
 		this.chatRepository = chatRepository;
+		this.elasticsearchVectorStore = elasticsearchVectorStore;
 		
 	}
 	
@@ -145,6 +151,12 @@ public class OpenAIService {
 	            .temperature(0.7)
 	            .build();
 
+	    
+	    // RAG 옵션용
+	    Advisor ragAdvisor = QuestionAnswerAdvisor.builder(elasticsearchVectorStore)
+	            .searchRequest(SearchRequest.builder().similarityThreshold(0.8d).topK(6).build())
+	            .build();	    
+	    
 	    // 프롬프트
 //	    Prompt prompt = new Prompt(List.of(systemMessage, userMessage, assistantMessage), options);
 	    Prompt prompt = new Prompt(chatMemory.get(userId), options);
@@ -152,6 +164,13 @@ public class OpenAIService {
 	    
 	    // 응답 메시지를 저장할 임시 버퍼
 	    StringBuilder responseBuffer = new StringBuilder();
+	    
+	    // 수동 RAG 구현
+	    // 1. text를 기반으로 임베딩 만듦
+	    // 2. 임베딩 결과를 DB에서 조회하여 문서 n개를 뽑음
+	    // 3. 문서를 prompt에 붙여서 보냄
+	    // 자동 RAG -> .advisors()
+	    
 	    
 	    
 	    // 요청 및 응답
@@ -181,7 +200,7 @@ public class OpenAIService {
 //	            });
 	    // 요청 및 응답 -> ChatClient 사용
 	    return chatClient.prompt(prompt)	// openAiChatModel 대신 chatClient로 진행
-//	    		.advisors()
+	    		.advisors(ragAdvisor)	// RAG
 	    		.tools(new ChatTools())	// ChatTools 객체를 사용함
 	    		.stream()	// stream 응답(api 호출)
 	    		.content()	// response.getResult().getOutput().getText()
