@@ -2,6 +2,7 @@ package org.example.spai.domain.openai.service;
 
 import java.util.List;
 
+import org.example.spai.domain.openai.dto.CityResponseDTO;
 import org.example.spai.domain.openai.entity.ChatEntity;
 import org.example.spai.domain.openai.repository.ChatRepository;
 import org.springframework.ai.audio.transcription.AudioTranscriptionPrompt;
@@ -70,7 +71,10 @@ public class OpenAIService {
 	
     
     // 1. chatmodel : response
-	public String generate(String text) {
+//	public String generate(String text) {
+	public CityResponseDTO generate(String text) {
+		
+		ChatClient chatClient = ChatClient.create(openAiChatModel);
 		
 		// 메시지(프롬포트)
 	    SystemMessage systemMessage = new SystemMessage("");
@@ -89,8 +93,13 @@ public class OpenAIService {
 	    
 	    // call 메서드를 통해서 openAiChatModel을 prompt에 넣어줌
 	    // 요청 및 응답
-	    ChatResponse response = openAiChatModel.call(prompt);
-	    return response.getResult().getOutput().getText();	    
+//	    ChatResponse response = openAiChatModel.call(prompt);
+//	    return response.getResult().getOutput().getText();	   
+	    
+	    // LLM 응답 구조화: LLM(LargeLanguageModel) 응답을 자연어스러움에서 구조화하여 자바스러움의 객체로 응답을 받는 방법 (문장 데이터 -> 자바 객체 변환)
+	    return chatClient.prompt(prompt)
+	    		.call()
+	    		.entity(CityResponseDTO.class); // CityResponseDTO.class가 원래 DTO라 Bean 컨버터 등록을 해야하지만 자동 타입 추론이 되기 때문에 명시하지 않아도 사용 가능
 	}
     
 	
@@ -107,10 +116,8 @@ public class OpenAIService {
 //		3. advisors: RAG
 //		4. entity: 응답 데이터를 java 객체로 파싱(call 메소드만)
 //		5. 추상화: 모델 변경되어도(open ai 호출 엔트로픽 호출 등) 동일한 메소드로 호출 가능
-		
 		ChatClient chatClient = ChatClient.create(openAiChatModel); // 와핑
 		
-
 	    // 유저&페이지별 ChatMemory를 관리하기 위한 key (우선은 명시적으로)
 	    String userId = "xxxjjhhh" + "_" + "3";
 		

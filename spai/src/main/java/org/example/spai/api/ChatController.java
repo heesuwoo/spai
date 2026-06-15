@@ -3,6 +3,7 @@ package org.example.spai.api;
 import java.util.List;
 import java.util.Map;
 
+import org.example.spai.domain.openai.dto.CityResponseDTO;
 import org.example.spai.domain.openai.entity.ChatEntity;
 import org.example.spai.domain.openai.service.ChatService;
 import org.example.spai.domain.openai.service.OpenAIService;
@@ -34,7 +35,8 @@ public class ChatController {
 	// none-stream 형태
     @ResponseBody
     @PostMapping("/chat")
-    public String chat(@RequestBody Map<String, String> body) {
+//    public String chat(@RequestBody Map<String, String> body) {
+    public CityResponseDTO chat(@RequestBody Map<String, String> body) {
         return openAIService.generate(body.get("text"));	// 사용자가 입력할 텍스트
     }
 
