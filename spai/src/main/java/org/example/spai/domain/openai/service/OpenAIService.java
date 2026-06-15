@@ -8,6 +8,7 @@ import org.springframework.ai.audio.transcription.AudioTranscriptionPrompt;
 import org.springframework.ai.audio.transcription.AudioTranscriptionResponse;
 import org.springframework.ai.audio.tts.TextToSpeechPrompt;
 import org.springframework.ai.audio.tts.TextToSpeechResponse;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
@@ -98,6 +99,17 @@ public class OpenAIService {
 	// 1. chatmodel : response를 stream 하게 받는 방법
 	// 데이터를 호출하고 응답 받을 때 Flux로 받음 + openai chat 모델을 호출할 때도 stream메서드로 바뀜
 	public Flux<String> generateStream(String text) {
+		
+		// ChatClient 사용하는 이유
+//		: ChatClient로 감싼 객체를 통해 아래 기능들을 쉽게 추가 가능
+//		1. ObservationRegistry: 요청/응답에 대해 로깅 추가 가능
+//		2. tools: LLM에게 사용할 툴(계산기 툴, 날씨 툴 등)을 붙여줌
+//		3. advisors: RAG
+//		4. entity: 응답 데이터를 java 객체로 파싱(call 메소드만)
+//		5. 추상화: 모델 변경되어도(open ai 호출 엔트로픽 호출 등) 동일한 메소드로 호출 가능
+		
+		ChatClient chatClient = ChatClient.create(openAiChatModel); // 와핑
+		
 
 	    // 유저&페이지별 ChatMemory를 관리하기 위한 key (우선은 명시적으로)
 	    String userId = "xxxjjhhh" + "_" + "3";
@@ -140,27 +152,52 @@ public class OpenAIService {
 //	    return openAiChatModel.stream(prompt)
 //	            .mapNotNull(response -> response.getResult().getOutput().getText());
 	    // 요청 및 응답
-	    return openAiChatModel.stream(prompt)
-	            .mapNotNull(response -> {
-	                String token = response.getResult().getOutput().getText();
-	                responseBuffer.append(token);	// 각각의 토큰을 추가해줌
-	                return token;
-	            })
-	            .doOnComplete(() -> {
-
+//	    return openAiChatModel.stream(prompt)
+//	            .mapNotNull(response -> {
+//	                String token = response.getResult().getOutput().getText();
+//	                responseBuffer.append(token);	// 각각의 토큰을 추가해줌
+//	                return token;
+//	            })
+//	            .doOnComplete(() -> {
+//
+//	                chatMemory.add(userId, new AssistantMessage(responseBuffer.toString()));
+//	                chatMemoryRepository.saveAll(userId, chatMemory.get(userId));	// DB에 저장
+//	                
+//	                // 전체 대화 저장용
+//	                // 응답받은 메시지
+//	                ChatEntity chatAssistantEntity = new ChatEntity();
+//	                chatAssistantEntity.setUserId(userId);
+//	                chatAssistantEntity.setType(MessageType.ASSISTANT);
+//	                chatAssistantEntity.setContent(responseBuffer.toString());
+//	                
+//	                chatRepository.saveAll(List.of(chatUserEntity, chatAssistantEntity));
+//	            });
+	    // 요청 및 응답 -> ChatClient 사용
+	    return chatClient.prompt(prompt)	// openAiChatModel 대신 chatClient로 진행
+//	    		.advisors()
+//	    		.tools()
+	    		.stream()	// stream 응답(api 호출)
+	    		.content()	// response.getResult().getOutput().getText()
+	    		.map(token -> {	// token 받은 것 순회
+	    			responseBuffer.append(token);
+	    			return token;
+	    		})
+	    		.doOnComplete(() -> {
+	                // chatMemory 저장
 	                chatMemory.add(userId, new AssistantMessage(responseBuffer.toString()));
-	                chatMemoryRepository.saveAll(userId, chatMemory.get(userId));	// DB에 저장
-	                
+	                chatMemoryRepository.saveAll(userId, chatMemory.get(userId));
+
 	                // 전체 대화 저장용
-	                // 응답받은 메시지
 	                ChatEntity chatAssistantEntity = new ChatEntity();
 	                chatAssistantEntity.setUserId(userId);
 	                chatAssistantEntity.setType(MessageType.ASSISTANT);
 	                chatAssistantEntity.setContent(responseBuffer.toString());
-	                
+
 	                chatRepository.saveAll(List.of(chatUserEntity, chatAssistantEntity));
-	            });
-	    
+	    		});
+	    		
+	    		
+	    		
 	}	
 	
 	
