@@ -182,7 +182,7 @@ public class OpenAIService {
 	    // 요청 및 응답 -> ChatClient 사용
 	    return chatClient.prompt(prompt)	// openAiChatModel 대신 chatClient로 진행
 //	    		.advisors()
-//	    		.tools()
+	    		.tools(new ChatTools())	// ChatTools 객체를 사용함
 	    		.stream()	// stream 응답(api 호출)
 	    		.content()	// response.getResult().getOutput().getText()
 	    		.map(token -> {	// token 받은 것 순회
